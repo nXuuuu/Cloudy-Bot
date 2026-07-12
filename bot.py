@@ -112,6 +112,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if file_path and os.path.exists(file_path):
         try:
+            # ⚖️ NEW: Check if the file size exceeds Telegram's strict 50MB limit
+            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            if file_size_mb >= 50.0:
+                await status_msg.edit_text(
+                    f"⚠️ <b>Video too large!</b>\n\n"
+                    f"This media is <b>{file_size_mb:.1f}MB</b>, which exceeds Telegram's strict 50MB limit for standard bots. "
+                    f"Try finding a shorter clip or lower resolution version!",
+                    parse_mode="HTML"
+                )
+                os.remove(file_path) # Clean up the server space immediately
+                return
+
             await status_msg.edit_text("📤 Uploading media...")
             with open(file_path, 'rb') as media_file:
                 if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
@@ -121,10 +133,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.delete()
         except Exception as e:
             await status_msg.edit_text(f"❌ Upload Failed. (Error: {str(e)})")
-        finally:
-            os.remove(file_path)
+            if os.path.exists(file_path):
+                os.remove(file_path)
     else:
-        await status_msg.edit_text("❌ Download Failed. The file might be over 50MB or private.")
+        await status_msg.edit_text("❌ Download Failed. The file might be private or temporarily unreachable.")
 
 def main():
     if not BOT_TOKEN:
