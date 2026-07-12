@@ -89,11 +89,7 @@ def download_media(url):
         'format_sort': ['res:720', '+size'], 
         'quiet': True,
         'no_warnings': True,
-        
-        # 🛡️ MAXIMUM RESILIENCE FLAGS
-        'nocheckcertificate': True,         # Bypasses strict cloud SSL handshake rejections
-        'ignoreerrors': True,               # Prevents crashing on minor tracking blockages
-        'http_chunk_size': '10M',           # Streams files in small pieces to avoid IP throttling
+        'nocheckcertificate': True,
         
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -102,6 +98,12 @@ def download_media(url):
             'Sec-Fetch-Mode': 'navigate',
         }
     }
+
+    # 🌐 PROXY BYPASS: If a proxy is set in Render Env, hook it up to yt-dlp automatically
+    PROXY_URL = os.getenv("PROXY_URL")
+    if PROXY_URL:
+        ydl_opts['proxy'] = PROXY_URL
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
@@ -141,7 +143,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_to_message_id=update.message.message_id,
                 parse_mode="HTML"
             )
-            # 🧹 1. FIXED: Changed sleep from 5 to 10 seconds here
+            # 🧹 1. Clear cooldown message after 10 seconds
             await asyncio.sleep(10)
             try:
                 await cooldown_msg.delete()
