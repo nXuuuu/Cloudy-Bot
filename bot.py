@@ -3,6 +3,7 @@ import re
 import asyncio
 import subprocess
 import sys
+import time
 from threading import Thread
 from flask import Flask
 from telegram import Update
@@ -13,6 +14,10 @@ from telegram.request import HTTPXRequest
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 URL_REGEX = r"(https?://(?:www\.)?(?:tiktok\.com|vt\.tiktok\.com|facebook\.com|fb\.watch|fb\.com)[^\s]+)"
 DOWNLOAD_DIR = "downloads"
+
+# 🛡️ ANTI-SPAM TRACKER
+user_cooldowns = {}
+COOLDOWN_DURATION = 60 
 
 # --- FLASK WEB SERVER (FOR THE PING TRICK) ---
 app = Flask(__name__)
@@ -109,6 +114,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not urls:
         return
         
+    # 🛡️ CHECK COOLDOWN BEFORE PROCESSING ANYTHING
+    user_id = update.message.from_user.id
+    current_time = time.time()
+    
+    if user_id in user_cooldowns:
+        time_passed = current_time - user_cooldowns[user_id]
+        if time_passed < COOLDOWN_DURATION:
+            remaining_time = int(COOLDOWN_DURATION - time_passed)
+            # Send cooldown warning notice
+            cooldown_msg = await update.message.reply_text(
+                f"⏳ <b>សុំ Cooldown មួយ!</b>\n"
+                f"Please wait <b>{remaining_time}s</b> before sending another link to prevent spam.",
+                reply_to_message_id=update.message.message_id,
+                parse_mode="HTML"
+            )
+            # 🧹 Auto-delete the cooldown notice after 5 seconds to keep the group clean
+            await asyncio.sleep(5)
+            try:
+                await cooldown_msg.delete()
+            except Exception:
+                pass
+            return
+
+    # Update the timestamp immediately
+    user_cooldowns[user_id] = current_time
+    
     url = urls[0]
     status_msg = await update.message.reply_text("⏳ Processing link...", reply_to_message_id=update.message.message_id)
     
@@ -121,11 +152,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if file_size_mb >= 50.0:
                 await status_msg.edit_text(
                     f"⚠️ <b>Video too large!</b>\n\n"
-                    f"Even at a reduced quality, this media is <b>{file_size_mb:.1f}MB</b>, which exceeds Telegram's strict 50MB limit for standard bots. "
-                    f"Try finding a shorter clip!",
+                    f"Even at a reduced quality, this media is <b>{file_size_mb:.1f}MB</b>, which exceeds Telegram's strict 50MB limit for standard bots.",
                     parse_mode="HTML"
                 )
                 os.remove(file_path) 
+                
+                # 🧹 Clear large file warning after 5 seconds
+                await asyncio.sleep(5)
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
                 return
 
             await status_msg.edit_text("📤 Uploading media...")
@@ -134,34 +171,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_photo(
                         photo=media_file, 
                         reply_to_message_id=update.message.message_id,
-                        connect_timeout=300,
-                        read_timeout=300,
-                        write_timeout=300
+                        connect_timeout=300, read_timeout=300, write_timeout=300
                     )
                 else:
                     await update.message.reply_video(
                         video=media_file, 
                         reply_to_message_id=update.message.message_id, 
                         supports_streaming=True,
-                        connect_timeout=300,
-                        read_timeout=300,
-                        write_timeout=300
+                        connect_timeout=300, read_timeout=300, write_timeout=300
                     )
+            # ✅ SUCCESS: Clean up the status update instantly
             await status_msg.delete()
         except Exception as e:
             await status_msg.edit_text(f"❌ Upload Failed. (Error: {str(e)})")
             if os.path.exists(file_path):
                 os.remove(file_path)
+            
+            # 🧹 Clear failed upload message after 5 seconds
+            await asyncio.sleep(5)
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
     else:
         await status_msg.edit_text("❌ Download Failed. The file might be private or temporarily unreachable.")
+        
+        # 🧹 Clear failed download message after 5 seconds
+        await asyncio.sleep(5)
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
 
 def main():
     if not BOT_TOKEN:
         print("CRITICAL: BOT_TOKEN environment variable is missing!")
         return
         
-    # 🤖 AUTOMATIC SELF-UPDATE RULE:
-    # Before starting the Telegram loop, force the server environment to update yt-dlp to the absolute latest version.
     print("🔄 Checking for engine updates...")
     try:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"])
@@ -174,7 +220,6 @@ def main():
     request_config = HTTPXRequest(connect_timeout=300, read_timeout=300, write_timeout=300)
     app = Application.builder().token(BOT_TOKEN).request(request_config).build()
     
-    # --- REGISTERED COMMAND HANDLERS ---
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("about", about_command))
