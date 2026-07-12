@@ -104,6 +104,8 @@ def download_media(url):
     PROXY_URL = os.getenv("PROXY_URL")
     if PROXY_URL:
         ydl_opts['proxy'] = PROXY_URL
+        ydl_opts['proxy_username'] = 'owxgqdqt'
+        ydl_opts['proxy_password'] = 'bl25td2gpu4'
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
