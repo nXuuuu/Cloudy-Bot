@@ -9,7 +9,6 @@ import yt_dlp
 
 # --- CONFIGURATION ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-# 🛠️ FIXED REGEX: Robust matching for all variations of TikTok/Facebook links without strict constraints
 URL_REGEX = r"(https?://(?:www\.)?(?:tiktok\.com|vt\.tiktok\.com|facebook\.com|fb\.watch|fb\.com)[^\s]+)"
 DOWNLOAD_DIR = "downloads"
 
@@ -60,7 +59,7 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(about_text, parse_mode="HTML", disable_web_page_preview=False)
 
-# 4. /status command handler (Fixed to use HTML style seamlessly)
+# 4. /status command handler
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🟢 <b>Status:</b> Online & operational on the cloud!", parse_mode="HTML")
 
@@ -74,8 +73,7 @@ def download_media(url):
     
     ydl_opts = {
         'outtmpl': file_path_template,
-        # 📉 CASCADE QUALITY LOGIC:
-        # Tries 720p first. If it's too large, it dynamically drops down to 480p, then 360p to fit under 50MB.
+        # 📉 CASCADE QUALITY LOGIC: Downscales nicely to pass 50MB limits
         'format': (
             'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
             'best[height<=720][ext=mp4]/'
@@ -137,9 +135,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text("📤 Uploading media...")
             with open(file_path, 'rb') as media_file:
                 if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
-                    await update.message.reply_photo(photo=media_file, reply_to_message_id=update.message.message_id)
+                    # ⏱️ Added explicit 60-second timeouts to protect network drops
+                    await update.message.reply_photo(
+                        photo=media_file, 
+                        reply_to_message_id=update.message.message_id,
+                        connect_timeout=60,
+                        read_timeout=60
+                    )
                 else:
-                    await update.message.reply_video(video=media_file, reply_to_message_id=update.message.message_id, supports_streaming=True)
+                    # ⏱️ Added explicit 60-second timeouts to protect network drops
+                    await update.message.reply_video(
+                        video=media_file, 
+                        reply_to_message_id=update.message.message_id, 
+                        supports_streaming=True,
+                        connect_timeout=60,
+                        read_timeout=60
+                    )
             await status_msg.delete()
         except Exception as e:
             await status_msg.edit_text(f"❌ Upload Failed. (Error: {str(e)})")
