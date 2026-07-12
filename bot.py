@@ -29,9 +29,12 @@ def keep_alive():
     t.start()
 
 # --- TELEGRAM BOT LOGIC ---
+
+# 1. /start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 ជំរាបសួរថ្ងៃនេះសុំ Full TP! សូមផ្ញើលីង TikTok ឬ Facebook Reel មកទីនេះខ្ញុំនឹងទាញយកវាជូន។")
 
+# 2. /help command handler
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "ℹ️ **How to use CloudyBot:**\n\n"
@@ -42,19 +45,26 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
+# 3. /about command handler (Beautifully Styled with HTML Links)
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     about_text = (
-        "☁️ **About CloudyBot**\n\n"
-        "A lightweight, data-saving media downloader designed for group chats.\n\n"
-        "• **Developer:** @_nxuu_\n"
-        "• **TEAM:** FINHUBKH\n"
-        "• **Webpage:** https://www.finhubkh.com/en"
+        "⚡️ <b>CloudyBot v1.0</b> ⚡️\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🚀 <b>Purpose:</b> Video conversions bot.\n\n"
+        "👤 <b>Creator:</b> @sokunthanou\n"
+        "👥 <b>Team Hub:</b> <a href='https://www.finhubkh.com/en'><b>FINHUBKH</b></a>\n"
+        "🌐 <b>Education Portal:</b> https://www.finhubkh.com/en\n\n"
+        "💡 <i>Type /help to see how to auto-extract TikTok & Facebook media instantly.</i>\n"
+        "━━━━━━━━━━━━━━━━━━━━"
     )
-    await update.message.reply_text(about_text, parse_mode="Markdown")
+    await update.message.reply_text(about_text, parse_mode="HTML", disable_web_page_preview=False)
 
+# 4. /status command handler
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🟢 **Status:** Online & operational on the cloud!")
 
+
+# --- VIDEO/IMAGE DOWNLOAD PARSER ENGINE ---
 def download_media(url):
     if not os.path.exists(DOWNLOAD_DIR):
         os.makedirs(DOWNLOAD_DIR)
@@ -125,13 +135,13 @@ def main():
     
     app = Application.builder().token(BOT_TOKEN).build()
     
-    # --- FIXED: ADDED THE REGISTERED HANDLERS HERE ---
+    # --- REGISTERED COMMAND HANDLERS ---
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("about", about_command))
     app.add_handler(CommandHandler("status", status_command))
     
-    # This handler must sit last so it captures text after verifying it isn't a command
+    # Catch-all link engine (Must stay at the bottom)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     print("✅ Bot is actively polling...")
