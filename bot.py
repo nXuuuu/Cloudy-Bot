@@ -9,7 +9,7 @@ from flask import Flask
 from telegram import Update, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
-import httpx  # <--- Replaced urllib with httpx for flawless proxy auth
+import httpx  # <--- The modern library replacing urllib
 import yt_dlp
 
 # --- CONFIGURATION ---
@@ -119,7 +119,8 @@ def download_media(url):
 
     # --- 🔍 URL PRE-RESOLVER USING HTTPX ---
     try:
-        with httpx.Client(proxy=httpx_proxy, follow_redirects=True, timeout=15.0) as client:
+        # Added verify=False to prevent proxy SSL blocks
+        with httpx.Client(proxy=httpx_proxy, follow_redirects=True, timeout=15.0, verify=False) as client:
             response = client.get(url, headers=ydl_opts['http_headers'])
             url = str(response.url)
     except Exception as e:
@@ -146,7 +147,8 @@ def download_media(url):
                     
                     # --- DOWNLOAD IMAGES USING HTTPX ---
                     try:
-                        with httpx.Client(proxy=httpx_proxy, timeout=30.0) as client:
+                        # Added verify=False to prevent proxy SSL blocks
+                        with httpx.Client(proxy=httpx_proxy, timeout=30.0, verify=False) as client:
                             for index, img_entry in enumerate(images[:10]):
                                 img_url = img_entry.get('url')
                                 if img_url:
