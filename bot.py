@@ -89,14 +89,19 @@ def download_media(url):
         'format_sort': ['res:720', '+size'], 
         'quiet': True,
         'no_warnings': True,
+        
+        # 🛡️ MAXIMUM RESILIENCE FLAGS
+        'nocheckcertificate': True,         # Bypasses strict cloud SSL handshake rejections
+        'ignoreerrors': True,               # Prevents crashing on minor tracking blockages
+        'http_chunk_size': '10M',           # Streams files in small pieces to avoid IP throttling
+        
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Referer': 'https://www.tiktok.com/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Sec-Fetch-Mode': 'navigate',
         }
     }
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
