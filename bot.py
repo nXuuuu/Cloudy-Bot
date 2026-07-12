@@ -9,7 +9,7 @@ import yt_dlp
 
 # --- CONFIGURATION ---
 BOT_TOKEN = os.getenv("BOT_TOKEN") 
-URL_REGEX = r"(https?://(?:www\.)?(?:tiktok\.com|vt\.tiktok\.com|facebook\.com|fb\.watch|fb\.com/reel)[^\s]+)"
+URL_REGEX = r"(https?://(?:www\.)?(?:tiktok\.com|vt\.tiktok\.com|facebook\.com|fb\.watch|fb\.com)[^\s]*?(?:reel|share/r|\d+)[^\s]*)"
 DOWNLOAD_DIR = "downloads"
 
 # --- FLASK WEB SERVER (FOR THE PING TRICK) ---
