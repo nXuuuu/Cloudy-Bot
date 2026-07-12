@@ -17,9 +17,10 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 URL_REGEX = r"(https?://(?:www\.)?(?:tiktok\.com|vt\.tiktok\.com|facebook\.com|fb\.watch|fb\.com)[^\s]+)"
 DOWNLOAD_DIR = "downloads"
 
-# 🛡️ ANTI-SPAM TRACKER
-user_cooldowns = {}
-COOLDOWN_DURATION = 60 
+# 🛡️ ANTI-SPAM MULTI-POST TRACKER
+user_cooldowns = {}       # Stores: {user_id: {"count": X, "reset_time": Y}}
+COOLDOWN_DURATION = 60    # Cooldown duration in seconds
+MAX_POSTS_ALLOWED = 3     # Number of links a user can drop before triggering cooldown
 
 # --- FLASK WEB SERVER (FOR THE PING TRICK) ---
 app = Flask(__name__)
@@ -92,6 +93,9 @@ def download_media(url):
         'no_warnings': True,
         'nocheckcertificate': True,
         
+        # Explicit path pointing directly to your Render virtual environment's bin folder where FFmpeg sits
+        'ffmpeg_location': '.venv/bin/',
+        
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -101,6 +105,7 @@ def download_media(url):
     }
 
     PROXY_URL = os.getenv("PROXY_URL")
+    clean_proxy = None
     if PROXY_URL:
         clean_proxy = PROXY_URL.strip().rstrip('/')
         ydl_opts['proxy'] = clean_proxy
@@ -109,10 +114,9 @@ def download_media(url):
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Extract metadata details without pulling any physical media payloads first
             info_dict = ydl.extract_info(url, download=False)
             
-            # 📸 SLIDESHOW DETECTOR: If there are raw image elements but no valid formats
+            # 📸 SLIDESHOW INTERCEPTOR: Checks if post handles image properties
             if info_dict.get('formats') is None or len(info_dict.get('formats', [])) <= 1 or info_dict.get('images'):
                 images = info_dict.get('images', [])
                 if not images and info_dict.get('entries'):
@@ -123,7 +127,7 @@ def download_media(url):
                     if img_url:
                         photo_path = f"{DOWNLOAD_DIR}/{info_dict.get('id', 'photo')}.jpg"
                         
-                        proxy_handler = urllib.request.ProxyHandler({'http': clean_proxy, 'https': clean_proxy}) if PROXY_URL else urllib.request.ProxyHandler()
+                        proxy_handler = urllib.request.ProxyHandler({'http': clean_proxy, 'https': clean_proxy}) if clean_proxy else urllib.request.ProxyHandler()
                         opener = urllib.request.build_opener(proxy_handler)
                         opener.addheaders = [('User-Agent', ydl_opts['http_headers']['User-Agent'])]
                         
@@ -131,7 +135,7 @@ def download_media(url):
                             out_file.write(response.read())
                         return photo_path
 
-            # 📹 STANDALONE VIDEO DOWNLOAD
+            # 📹 STANDARD AUDIO-VIDEO MERGED DOWNLOAD
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
             
@@ -154,16 +158,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not urls:
         return
         
+    # 🛡️ DYNAMIC COUNTER COOLDOWN SYSTEM
     user_id = update.message.from_user.id
     current_time = time.time()
     
-    if user_id in user_cooldowns:
-        time_passed = current_time - user_cooldowns[user_id]
-        if time_passed < COOLDOWN_DURATION:
-            remaining_time = int(COOLDOWN_DURATION - time_passed)
+    if user_id not in user_cooldowns:
+        user_cooldowns[user_id] = {"count": 0, "reset_time": current_time + COOLDOWN_DURATION}
+        
+    user_data = user_cooldowns[user_id]
+    
+    # Check if past tracking window expired to refresh structural bounds
+    if current_time > user_data["reset_time"]:
+        user_data["count"] = 0
+        user_data["reset_time"] = current_time + COOLDOWN_DURATION
+
+    # Intercept instantly if allowance threshold is exceeded
+    if user_data["count"] >= MAX_POSTS_ALLOWED:
+        remaining_time = int(user_data["reset_time"] - current_time)
+        if remaining_time > 0:
             cooldown_msg = await update.message.reply_text(
                 f"⏳ <b>សុំ Cooldown មួយ! Auto Deleting in 10 Seconds.</b>\n"
-                f"Please wait <b>{remaining_time}s</b> before sending another link to prevent spam.",
+                f"You have reached the limit of <b>{MAX_POSTS_ALLOWED}</b> requests. Please wait <b>{remaining_time}s</b>.",
                 reply_to_message_id=update.message.message_id,
                 parse_mode="HTML"
             )
@@ -174,11 +189,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             return
 
-    user_cooldowns[user_id] = current_time
+    # Commit entry point count token
+    user_data["count"] += 1
     
     url = urls[0]
     
-    # 🎭 THE URL SWAPPER: Rewrites /photo/ to /video/ so yt-dlp's scraper doesn't crash
+    # 🎭 THE URL SWAPPER: Converts /photo/ layouts to video hooks so yt-dlp won't throw unsupported flags
     if "/photo/" in url:
         url = url.replace("/photo/", "/video/")
         
