@@ -103,7 +103,9 @@ def download_media(url):
     # 🌐 PROXY CONFIGURATION: Loaded automatically from your Render Env
     PROXY_URL = os.getenv("PROXY_URL")
     if PROXY_URL:
-        ydl_opts['proxy'] = PROXY_URL
+        # Clean up any accidental trailing slashes so yt-dlp doesn't misparse fields
+        clean_proxy = PROXY_URL.strip().rstrip('/')
+        ydl_opts['proxy'] = clean_proxy
         ydl_opts['proxy_username'] = 'owxgqdqt'
         ydl_opts['proxy_password'] = 'bl25td2gpu4'
 
