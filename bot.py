@@ -9,7 +9,7 @@ from flask import Flask
 from telegram import Update, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
-import urllib.request
+import httpx  # <--- Replaced urllib with httpx for flawless proxy auth
 import yt_dlp
 
 # --- CONFIGURATION ---
@@ -105,7 +105,7 @@ def download_media(url):
 
     PROXY_URL = os.getenv("PROXY_URL")
     clean_proxy = None
-    urllib_proxy = None
+    httpx_proxy = None
     
     if PROXY_URL:
         clean_proxy = PROXY_URL.strip().rstrip('/')
@@ -113,17 +113,15 @@ def download_media(url):
         ydl_opts['proxy_username'] = 'owxgqdqt'
         ydl_opts['proxy_password'] = 'bl25td2gpu4'
         
+        # Format the proxy specifically for HTTPX integration
         raw_ip_port = clean_proxy.replace('http://', '').replace('https://', '')
-        urllib_proxy = f"http://owxgqdqt:bl25td2gpu4@{raw_ip_port}"
+        httpx_proxy = f"http://owxgqdqt:bl25td2gpu4@{raw_ip_port}"
 
-    # --- 🔍 URL PRE-RESOLVER: Unrolls short links (vt.tiktok) to catch hidden /photo/ paths ---
+    # --- 🔍 URL PRE-RESOLVER USING HTTPX ---
     try:
-        proxy_handler = urllib.request.ProxyHandler({'http': urllib_proxy, 'https': urllib_proxy}) if urllib_proxy else urllib.request.ProxyHandler()
-        opener = urllib.request.build_opener(proxy_handler)
-        opener.addheaders = [('User-Agent', ydl_opts['http_headers']['User-Agent'])]
-        response = opener.open(url, timeout=10)
-        url = response.url  # Gets the true destination URL after redirects
-        response.close()
+        with httpx.Client(proxy=httpx_proxy, follow_redirects=True, timeout=15.0) as client:
+            response = client.get(url, headers=ydl_opts['http_headers'])
+            url = str(response.url)
     except Exception as e:
         print(f"URL Resolve error: {e}")
         pass
@@ -146,19 +144,22 @@ def download_media(url):
                     downloaded_photo_paths = []
                     post_id = info_dict.get('id', str(int(time.time())))
                     
-                    proxy_handler = urllib.request.ProxyHandler({'http': urllib_proxy, 'https': urllib_proxy}) if urllib_proxy else urllib.request.ProxyHandler()
-                    opener = urllib.request.build_opener(proxy_handler)
-                    opener.addheaders = [('User-Agent', ydl_opts['http_headers']['User-Agent'])]
-                    
-                    for index, img_entry in enumerate(images[:10]):
-                        img_url = img_entry.get('url')
-                        if img_url:
-                            photo_path = f"{DOWNLOAD_DIR}/{post_id}_{index}.jpg"
-                            with opener.open(img_url) as response, open(photo_path, 'wb') as out_file:
-                                out_file.write(response.read())
-                            downloaded_photo_paths.append(photo_path)
-                            
-                    return downloaded_photo_paths
+                    # --- DOWNLOAD IMAGES USING HTTPX ---
+                    try:
+                        with httpx.Client(proxy=httpx_proxy, timeout=30.0) as client:
+                            for index, img_entry in enumerate(images[:10]):
+                                img_url = img_entry.get('url')
+                                if img_url:
+                                    photo_path = f"{DOWNLOAD_DIR}/{post_id}_{index}.jpg"
+                                    response = client.get(img_url, headers=ydl_opts['http_headers'])
+                                    response.raise_for_status()
+                                    with open(photo_path, 'wb') as out_file:
+                                        out_file.write(response.content)
+                                    downloaded_photo_paths.append(photo_path)
+                            return downloaded_photo_paths
+                    except Exception as img_e:
+                        print(f"Image download error: {img_e}")
+                        return None
 
             # 📹 STANDARD AUDIO-VIDEO MERGED DOWNLOAD
             info_dict = ydl.extract_info(url, download=True)
