@@ -9,6 +9,7 @@ from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
+import urllib.request
 import yt_dlp
 
 # --- CONFIGURATION ---
@@ -91,7 +92,6 @@ def download_media(url):
         'no_warnings': True,
         'nocheckcertificate': True,
         
-        # 🌐 Optimized headers that pass proxy credentials cleanly without 407 errors
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -100,10 +100,8 @@ def download_media(url):
         }
     }
 
-    # 🌐 PROXY CONFIGURATION: Loaded automatically from your Render Env
     PROXY_URL = os.getenv("PROXY_URL")
     if PROXY_URL:
-        # Clean up any accidental trailing slashes so yt-dlp doesn't misparse fields
         clean_proxy = PROXY_URL.strip().rstrip('/')
         ydl_opts['proxy'] = clean_proxy
         ydl_opts['proxy_username'] = 'owxgqdqt'
@@ -111,6 +109,30 @@ def download_media(url):
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            
+            # 📸 PHOTO MODE HANDLING: Extract the first image if it's a photo post
+            if info_dict.get('entries') or ('requested_entries' in info_dict) or (info_dict.get('formats') is None and info_dict.get('images')):
+                images = info_dict.get('images', [])
+                if not images and info_dict.get('entries'):
+                    images = info_dict['entries'][0].get('images', [])
+                
+                if images:
+                    # Snag the top high-quality photo url
+                    img_url = images[0].get('url')
+                    if img_url:
+                        photo_path = f"{DOWNLOAD_DIR}/{info_dict.get('id', 'photo')}.jpg"
+                        
+                        # Fetch the image using our proxy configurations
+                        proxy_handler = urllib.request.ProxyHandler({'http': clean_proxy, 'https': clean_proxy}) if PROXY_URL else urllib.request.ProxyHandler()
+                        opener = urllib.request.build_opener(proxy_handler)
+                        opener.addheaders = [('User-Agent', ydl_opts['http_headers']['User-Agent'])]
+                        
+                        with opener.open(img_url) as response, open(photo_path, 'wb') as out_file:
+                            out_file.write(response.read())
+                        return photo_path
+
+            # 📹 STANDARD VIDEO MODE: Download video normally
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
             
@@ -133,7 +155,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not urls:
         return
         
-    # 🛡️ CHECK COOLDOWN BEFORE PROCESSING ANYTHING
     user_id = update.message.from_user.id
     current_time = time.time()
     
@@ -147,7 +168,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_to_message_id=update.message.message_id,
                 parse_mode="HTML"
             )
-            # 🧹 1. Clear cooldown warning notice after 10 seconds
             await asyncio.sleep(10)
             try:
                 await cooldown_msg.delete()
@@ -155,7 +175,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             return
 
-    # Update the timestamp immediately
     user_cooldowns[user_id] = current_time
     
     url = urls[0]
@@ -174,8 +193,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode="HTML"
                 )
                 os.remove(file_path) 
-                
-                # 🧹 2. Clear large file warning after 10 seconds
                 await asyncio.sleep(10)
                 try:
                     await status_msg.delete()
@@ -185,6 +202,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await status_msg.edit_text("📤 Uploading media...")
             with open(file_path, 'rb') as media_file:
+                # 🖼️ Intelligently routes file types dynamically
                 if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
                     await update.message.reply_photo(
                         photo=media_file, 
@@ -198,14 +216,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         supports_streaming=True,
                         connect_timeout=300, read_timeout=300, write_timeout=300
                     )
-            # ✅ SUCCESS: Delete processing alert cleanly
             await status_msg.delete()
         except Exception as e:
             await status_msg.edit_text(f"❌ Upload Failed. (Error: {str(e)}) Auto Deleting in 10 Seconds.")
             if os.path.exists(file_path):
                 os.remove(file_path)
-            
-            # 🧹 3. Clear failed upload notice after 10 seconds
             await asyncio.sleep(10)
             try:
                 await status_msg.delete()
@@ -213,8 +228,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
     else:
         await status_msg.edit_text("❌ Download Failed. The file might be private or temporarily unreachable. Auto Deleting in 10 Seconds.")
-        
-        # 🧹 4. Clear failed download alert after 10 seconds
         await asyncio.sleep(10)
         try:
             await status_msg.delete()
