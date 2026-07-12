@@ -105,11 +105,20 @@ def download_media(url):
 
     PROXY_URL = os.getenv("PROXY_URL")
     clean_proxy = None
+    urllib_proxy = None
+    
     if PROXY_URL:
         clean_proxy = PROXY_URL.strip().rstrip('/')
+        
+        # 1. Provide credentials to yt-dlp for Videos
         ydl_opts['proxy'] = clean_proxy
         ydl_opts['proxy_username'] = 'owxgqdqt'
         ydl_opts['proxy_password'] = 'bl25td2gpu4'
+        
+        # 2. Assemble fully authenticated string for urllib Images
+        # Converts http://142.111... to http://user:pass@142.111...
+        raw_ip_port = clean_proxy.replace('http://', '').replace('https://', '')
+        urllib_proxy = f"http://owxgqdqt:bl25td2gpu4@{raw_ip_port}"
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -125,11 +134,12 @@ def download_media(url):
                     downloaded_photo_paths = []
                     post_id = info_dict.get('id', str(int(time.time())))
                     
-                    proxy_handler = urllib.request.ProxyHandler({'http': clean_proxy, 'https': clean_proxy}) if clean_proxy else urllib.request.ProxyHandler()
+                    # Apply the authenticated proxy string here
+                    proxy_handler = urllib.request.ProxyHandler({'http': urllib_proxy, 'https': urllib_proxy}) if urllib_proxy else urllib.request.ProxyHandler()
                     opener = urllib.request.build_opener(proxy_handler)
                     opener.addheaders = [('User-Agent', ydl_opts['http_headers']['User-Agent'])]
                     
-                    # Loop through all images inside the carousel array (capped at 10 due to Telegram album limits)
+                    # Loop through up to 10 images (Telegram album limit)
                     for index, img_entry in enumerate(images[:10]):
                         img_url = img_entry.get('url')
                         if img_url:
@@ -138,7 +148,6 @@ def download_media(url):
                                 out_file.write(response.read())
                             downloaded_photo_paths.append(photo_path)
                             
-                    # Returns a Python list string containing paths instead of a single path string
                     return downloaded_photo_paths
 
             # 📹 STANDARD AUDIO-VIDEO MERGED DOWNLOAD
@@ -206,11 +215,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if download_result:
         try:
-            # 🎨 TYPE DETECTOR: Checks if the returned result is an image carousel list
+            # 🎨 TYPE DETECTOR: Handles image carousel lists
             if isinstance(download_result, list):
                 await status_msg.edit_text("📤 Uploading photo album carousel...")
                 
-                # Bundle paths into InputMediaPhoto items natively mapped for album presentation
                 media_group = []
                 opened_files = []
                 
@@ -219,14 +227,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     opened_files.append(f)
                     media_group.append(InputMediaPhoto(media=f))
                 
-                # Fire the aggregated media pack
                 await update.message.reply_media_group(
                     media=media_group,
                     reply_to_message_id=update.message.message_id,
                     connect_timeout=300, read_timeout=300, write_timeout=300
                 )
                 
-                # Clean closure routines
                 for f in opened_files:
                     f.close()
                 for path in download_result:
