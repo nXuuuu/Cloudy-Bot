@@ -18,9 +18,9 @@ URL_REGEX = r"(https?://(?:www\.)?(?:tiktok\.com|vt\.tiktok\.com|facebook\.com|f
 DOWNLOAD_DIR = "downloads"
 
 # 🛡️ ANTI-SPAM MULTI-POST TRACKER
-user_cooldowns = {}       # Stores: {user_id: {"count": X, "reset_time": Y}}
-COOLDOWN_DURATION = 60    # Cooldown duration in seconds
-MAX_POSTS_ALLOWED = 3     # Number of links a user can drop before triggering cooldown
+user_cooldowns = {}       
+COOLDOWN_DURATION = 60    
+MAX_POSTS_ALLOWED = 3     
 
 # --- FLASK WEB SERVER (FOR THE PING TRICK) ---
 app = Flask(__name__)
@@ -109,22 +109,34 @@ def download_media(url):
     
     if PROXY_URL:
         clean_proxy = PROXY_URL.strip().rstrip('/')
-        
-        # 1. Provide credentials to yt-dlp for Videos
         ydl_opts['proxy'] = clean_proxy
         ydl_opts['proxy_username'] = 'owxgqdqt'
         ydl_opts['proxy_password'] = 'bl25td2gpu4'
         
-        # 2. Assemble fully authenticated string for urllib Images
-        # Converts http://142.111... to http://user:pass@142.111...
         raw_ip_port = clean_proxy.replace('http://', '').replace('https://', '')
         urllib_proxy = f"http://owxgqdqt:bl25td2gpu4@{raw_ip_port}"
+
+    # --- 🔍 URL PRE-RESOLVER: Unrolls short links (vt.tiktok) to catch hidden /photo/ paths ---
+    try:
+        proxy_handler = urllib.request.ProxyHandler({'http': urllib_proxy, 'https': urllib_proxy}) if urllib_proxy else urllib.request.ProxyHandler()
+        opener = urllib.request.build_opener(proxy_handler)
+        opener.addheaders = [('User-Agent', ydl_opts['http_headers']['User-Agent'])]
+        response = opener.open(url, timeout=10)
+        url = response.url  # Gets the true destination URL after redirects
+        response.close()
+    except Exception as e:
+        print(f"URL Resolve error: {e}")
+        pass
+        
+    # 🎭 SWAPPER: Safely switches photo paths to video paths to prevent yt-dlp crashes
+    if "/photo/" in url:
+        url = url.replace("/photo/", "/video/")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             
-            # 📸 CAROUSEL DETECTOR: Pulls all image slides inside the post payload
+            # 📸 CAROUSEL DETECTOR
             if info_dict.get('formats') is None or len(info_dict.get('formats', [])) <= 1 or info_dict.get('images'):
                 images = info_dict.get('images', [])
                 if not images and info_dict.get('entries'):
@@ -134,12 +146,10 @@ def download_media(url):
                     downloaded_photo_paths = []
                     post_id = info_dict.get('id', str(int(time.time())))
                     
-                    # Apply the authenticated proxy string here
                     proxy_handler = urllib.request.ProxyHandler({'http': urllib_proxy, 'https': urllib_proxy}) if urllib_proxy else urllib.request.ProxyHandler()
                     opener = urllib.request.build_opener(proxy_handler)
                     opener.addheaders = [('User-Agent', ydl_opts['http_headers']['User-Agent'])]
                     
-                    # Loop through up to 10 images (Telegram album limit)
                     for index, img_entry in enumerate(images[:10]):
                         img_url = img_entry.get('url')
                         if img_url:
@@ -204,9 +214,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_data["count"] += 1
     url = urls[0]
-    
-    if "/photo/" in url:
-        url = url.replace("/photo/", "/video/")
         
     status_msg = await update.message.reply_text("⏳ Processing link...", reply_to_message_id=update.message.message_id)
     
