@@ -1,6 +1,8 @@
 import os
 import re
 import asyncio
+import subprocess
+import sys
 from threading import Thread
 from flask import Flask
 from telegram import Update
@@ -30,11 +32,9 @@ def keep_alive():
 
 # --- TELEGRAM BOT LOGIC ---
 
-# 1. /start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 ជំរាបសួរថ្ងៃនេះសុំ Full TP! សូមផ្ញើលីង TikTok ឬ Facebook Reel មកទីនេះខ្ញុំនឹងទាញយកវាជូន។")
 
-# 2. /help command handler
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "ℹ️ <b>How to use CloudyBot:</b>\n\n"
@@ -45,7 +45,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(help_text, parse_mode="HTML")
 
-# 3. /about command handler
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     about_text = (
         "⚡️ <b>CloudyBot v1.0</b> ⚡️\n"
@@ -59,7 +58,6 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(about_text, parse_mode="HTML", disable_web_page_preview=False)
 
-# 4. /status command handler
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🟢 <b>Status:</b> Online & operational on the cloud!", parse_mode="HTML")
 
@@ -133,7 +131,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text("📤 Uploading media...")
             with open(file_path, 'rb') as media_file:
                 if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
-                    # ⏱️ Boosted to 300 seconds (5 minutes) maximum timeout window
                     await update.message.reply_photo(
                         photo=media_file, 
                         reply_to_message_id=update.message.message_id,
@@ -142,7 +139,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         write_timeout=300
                     )
                 else:
-                    # ⏱️ Boosted to 300 seconds (5 minutes) maximum timeout window
                     await update.message.reply_video(
                         video=media_file, 
                         reply_to_message_id=update.message.message_id, 
@@ -164,9 +160,17 @@ def main():
         print("CRITICAL: BOT_TOKEN environment variable is missing!")
         return
         
+    # 🤖 AUTOMATIC SELF-UPDATE RULE:
+    # Before starting the Telegram loop, force the server environment to update yt-dlp to the absolute latest version.
+    print("🔄 Checking for engine updates...")
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"])
+        print("✅ Engine is up-to-date!")
+    except Exception as update_error:
+        print(f"⚠️ Automatic update check skipped: {update_error}")
+
     keep_alive() 
     
-    # ⚙️ Pass explicit high timeouts to the core HTTP request handler layer
     request_config = HTTPXRequest(connect_timeout=300, read_timeout=300, write_timeout=300)
     app = Application.builder().token(BOT_TOKEN).request(request_config).build()
     
@@ -176,7 +180,6 @@ def main():
     app.add_handler(CommandHandler("about", about_command))
     app.add_handler(CommandHandler("status", status_command))
     
-    # Catch-all link engine (Must stay at the bottom)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     print("✅ Bot is actively polling...")
