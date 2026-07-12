@@ -6,7 +6,7 @@ import sys
 import time
 from threading import Thread
 from flask import Flask
-from telegram import Update
+from telegram import Update, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
 import urllib.request
@@ -93,7 +93,6 @@ def download_media(url):
         'no_warnings': True,
         'nocheckcertificate': True,
         
-        # Explicit path pointing directly to your Render virtual environment's bin folder where FFmpeg sits
         'ffmpeg_location': '.venv/bin/',
         
         'http_headers': {
@@ -116,24 +115,31 @@ def download_media(url):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             
-            # 📸 SLIDESHOW INTERCEPTOR: Checks if post handles image properties
+            # 📸 CAROUSEL DETECTOR: Pulls all image slides inside the post payload
             if info_dict.get('formats') is None or len(info_dict.get('formats', [])) <= 1 or info_dict.get('images'):
                 images = info_dict.get('images', [])
                 if not images and info_dict.get('entries'):
                     images = info_dict['entries'][0].get('images', [])
                 
                 if images:
-                    img_url = images[0].get('url')
-                    if img_url:
-                        photo_path = f"{DOWNLOAD_DIR}/{info_dict.get('id', 'photo')}.jpg"
-                        
-                        proxy_handler = urllib.request.ProxyHandler({'http': clean_proxy, 'https': clean_proxy}) if clean_proxy else urllib.request.ProxyHandler()
-                        opener = urllib.request.build_opener(proxy_handler)
-                        opener.addheaders = [('User-Agent', ydl_opts['http_headers']['User-Agent'])]
-                        
-                        with opener.open(img_url) as response, open(photo_path, 'wb') as out_file:
-                            out_file.write(response.read())
-                        return photo_path
+                    downloaded_photo_paths = []
+                    post_id = info_dict.get('id', str(int(time.time())))
+                    
+                    proxy_handler = urllib.request.ProxyHandler({'http': clean_proxy, 'https': clean_proxy}) if clean_proxy else urllib.request.ProxyHandler()
+                    opener = urllib.request.build_opener(proxy_handler)
+                    opener.addheaders = [('User-Agent', ydl_opts['http_headers']['User-Agent'])]
+                    
+                    # Loop through all images inside the carousel array (capped at 10 due to Telegram album limits)
+                    for index, img_entry in enumerate(images[:10]):
+                        img_url = img_entry.get('url')
+                        if img_url:
+                            photo_path = f"{DOWNLOAD_DIR}/{post_id}_{index}.jpg"
+                            with opener.open(img_url) as response, open(photo_path, 'wb') as out_file:
+                                out_file.write(response.read())
+                            downloaded_photo_paths.append(photo_path)
+                            
+                    # Returns a Python list string containing paths instead of a single path string
+                    return downloaded_photo_paths
 
             # 📹 STANDARD AUDIO-VIDEO MERGED DOWNLOAD
             info_dict = ydl.extract_info(url, download=True)
@@ -167,12 +173,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     user_data = user_cooldowns[user_id]
     
-    # Check if past tracking window expired to refresh structural bounds
     if current_time > user_data["reset_time"]:
         user_data["count"] = 0
         user_data["reset_time"] = current_time + COOLDOWN_DURATION
 
-    # Intercept instantly if allowance threshold is exceeded
     if user_data["count"] >= MAX_POSTS_ALLOWED:
         remaining_time = int(user_data["reset_time"] - current_time)
         if remaining_time > 0:
@@ -189,57 +193,90 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             return
 
-    # Commit entry point count token
     user_data["count"] += 1
-    
     url = urls[0]
     
-    # 🎭 THE URL SWAPPER: Converts /photo/ layouts to video hooks so yt-dlp won't throw unsupported flags
     if "/photo/" in url:
         url = url.replace("/photo/", "/video/")
         
     status_msg = await update.message.reply_text("⏳ Processing link...", reply_to_message_id=update.message.message_id)
     
     loop = asyncio.get_event_loop()
-    file_path = await loop.run_in_executor(None, download_media, url)
+    download_result = await loop.run_in_executor(None, download_media, url)
     
-    if file_path and os.path.exists(file_path):
+    if download_result:
         try:
-            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-            if file_size_mb >= 50.0:
-                await status_msg.edit_text(
-                    f"⚠️ <b>Video too large!</b>\n\n"
-                    f"Even at a reduced quality, this media is <b>{file_size_mb:.1f}MB</b>, which exceeds Telegram's strict 50MB limit for standard bots. Auto Deleting in 10 Seconds.",
-                    parse_mode="HTML"
+            # 🎨 TYPE DETECTOR: Checks if the returned result is an image carousel list
+            if isinstance(download_result, list):
+                await status_msg.edit_text("📤 Uploading photo album carousel...")
+                
+                # Bundle paths into InputMediaPhoto items natively mapped for album presentation
+                media_group = []
+                opened_files = []
+                
+                for path in download_result:
+                    f = open(path, 'rb')
+                    opened_files.append(f)
+                    media_group.append(InputMediaPhoto(media=f))
+                
+                # Fire the aggregated media pack
+                await update.message.reply_media_group(
+                    media=media_group,
+                    reply_to_message_id=update.message.message_id,
+                    connect_timeout=300, read_timeout=300, write_timeout=300
                 )
-                os.remove(file_path) 
-                await asyncio.sleep(10)
-                try:
-                    await status_msg.delete()
-                except Exception:
-                    pass
-                return
+                
+                # Clean closure routines
+                for f in opened_files:
+                    f.close()
+                for path in download_result:
+                    if os.path.exists(path):
+                        os.remove(path)
+                        
+            # 📹 SINGLE FILE VIDEO HANDLING LOGIC
+            else:
+                file_path = download_result
+                file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+                if file_size_mb >= 50.0:
+                    await status_msg.edit_text(
+                        f"⚠️ <b>Video too large!</b>\n\n"
+                        f"Even at a reduced quality, this media is <b>{file_size_mb:.1f}MB</b>, which exceeds Telegram's strict 50MB limit for standard bots. Auto Deleting in 10 Seconds.",
+                        parse_mode="HTML"
+                    )
+                    os.remove(file_path) 
+                    await asyncio.sleep(10)
+                    try:
+                        await status_msg.delete()
+                    except Exception:
+                        pass
+                    return
 
-            await status_msg.edit_text("📤 Uploading media...")
-            with open(file_path, 'rb') as media_file:
-                if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
-                    await update.message.reply_photo(
-                        photo=media_file, 
-                        reply_to_message_id=update.message.message_id,
-                        connect_timeout=300, read_timeout=300, write_timeout=300
-                    )
-                else:
-                    await update.message.reply_video(
-                        video=media_file, 
-                        reply_to_message_id=update.message.message_id, 
-                        supports_streaming=True,
-                        connect_timeout=300, read_timeout=300, write_timeout=300
-                    )
+                await status_msg.edit_text("📤 Uploading media...")
+                with open(file_path, 'rb') as media_file:
+                    if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                        await update.message.reply_photo(
+                            photo=media_file, 
+                            reply_to_message_id=update.message.message_id,
+                            connect_timeout=300, read_timeout=300, write_timeout=300
+                        )
+                    else:
+                        await update.message.reply_video(
+                            video=media_file, 
+                            reply_to_message_id=update.message.message_id, 
+                            supports_streaming=True,
+                            connect_timeout=300, read_timeout=300, write_timeout=300
+                        )
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    
             await status_msg.delete()
         except Exception as e:
             await status_msg.edit_text(f"❌ Upload Failed. (Error: {str(e)}) Auto Deleting in 10 Seconds.")
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            if isinstance(download_result, list):
+                for path in download_result:
+                    if os.path.exists(path): os.remove(path)
+            elif os.path.exists(download_result):
+                os.remove(download_result)
             await asyncio.sleep(10)
             try:
                 await status_msg.delete()
