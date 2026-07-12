@@ -109,21 +109,20 @@ def download_media(url):
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # Extract metadata details without pulling any physical media payloads first
             info_dict = ydl.extract_info(url, download=False)
             
-            # 📸 PHOTO MODE HANDLING: Extract the first image if it's a photo post
-            if info_dict.get('entries') or ('requested_entries' in info_dict) or (info_dict.get('formats') is None and info_dict.get('images')):
+            # 📸 SLIDESHOW DETECTOR: If there are raw image elements but no valid formats
+            if info_dict.get('formats') is None or len(info_dict.get('formats', [])) <= 1 or info_dict.get('images'):
                 images = info_dict.get('images', [])
                 if not images and info_dict.get('entries'):
                     images = info_dict['entries'][0].get('images', [])
                 
                 if images:
-                    # Snag the top high-quality photo url
                     img_url = images[0].get('url')
                     if img_url:
                         photo_path = f"{DOWNLOAD_DIR}/{info_dict.get('id', 'photo')}.jpg"
                         
-                        # Fetch the image using our proxy configurations
                         proxy_handler = urllib.request.ProxyHandler({'http': clean_proxy, 'https': clean_proxy}) if PROXY_URL else urllib.request.ProxyHandler()
                         opener = urllib.request.build_opener(proxy_handler)
                         opener.addheaders = [('User-Agent', ydl_opts['http_headers']['User-Agent'])]
@@ -132,7 +131,7 @@ def download_media(url):
                             out_file.write(response.read())
                         return photo_path
 
-            # 📹 STANDARD VIDEO MODE: Download video normally
+            # 📹 STANDALONE VIDEO DOWNLOAD
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
             
@@ -178,6 +177,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_cooldowns[user_id] = current_time
     
     url = urls[0]
+    
+    # 🎭 THE URL SWAPPER: Rewrites /photo/ to /video/ so yt-dlp's scraper doesn't crash
+    if "/photo/" in url:
+        url = url.replace("/photo/", "/video/")
+        
     status_msg = await update.message.reply_text("⏳ Processing link...", reply_to_message_id=update.message.message_id)
     
     loop = asyncio.get_event_loop()
@@ -202,7 +206,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await status_msg.edit_text("📤 Uploading media...")
             with open(file_path, 'rb') as media_file:
-                # 🖼️ Intelligently routes file types dynamically
                 if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
                     await update.message.reply_photo(
                         photo=media_file, 
