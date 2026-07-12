@@ -1,0 +1,16 @@
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore local virtual environments if you test locally
+venv/
+env/
+.env
+
+# CRITICAL: Prevent local downloaded video files from accidentally being pushed to GitHub
+downloads/
+*.mp4
+*.mkv
+*.webm
+*.jpg
+*.png
