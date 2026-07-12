@@ -52,7 +52,7 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "━━━━━━━━━━━━━━━━━━━━\n"
         "🚀 <b>Purpose:</b> Video conversions bot.\n\n"
         "👤 <b>Creator:</b> @sokunthanou\n"
-        "👥 <b>Team Hub:</b> <a href='https://www.finhubkh.com/en'><b>FINHUBKH</b></a>\n"
+        "👥 <b>Team:</b> <a href='https://www.finhubkh.com/en'><b>FINHUBKH</b></a>\n"
         "🌐 <b>Education Portal:</b> https://www.finhubkh.com/en\n\n"
         "💡 <i>Type /help to see how to auto-extract TikTok & Facebook media instantly.</i>\n"
         "━━━━━━━━━━━━━━━━━━━━"
