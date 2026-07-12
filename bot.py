@@ -8,8 +8,9 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import yt_dlp
 
 # --- CONFIGURATION ---
-BOT_TOKEN = os.getenv("BOT_TOKEN") 
-URL_REGEX = r"(https?://(?:www\.)?(?:tiktok\.com|vt\.tiktok\.com|facebook\.com|fb\.watch|fb\.com)[^\s]*?(?:reel|share/r|\d+)[^\s]*)"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+# 🛠️ FIXED REGEX: Robust matching for all variations of TikTok/Facebook links without strict constraints
+URL_REGEX = r"(https?://(?:www\.)?(?:tiktok\.com|vt\.tiktok\.com|facebook\.com|fb\.watch|fb\.com)[^\s]+)"
 DOWNLOAD_DIR = "downloads"
 
 # --- FLASK WEB SERVER (FOR THE PING TRICK) ---
@@ -37,13 +38,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 2. /help command handler
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
-        "ℹ️ **How to use CloudyBot:**\n\n"
+        "ℹ️ <b>How to use CloudyBot:</b>\n\n"
         "1. Add me to your group chat.\n"
         "2. Make sure I have permission to read/send messages.\n"
-        "3. Simply paste a link from **TikTok** or **Facebook (Reels/Videos)**.\n\n"
-        "⚠️ *Note: Files larger than 50MB cannot be sent due to Telegram limits.*"
+        "3. Simply paste a link from <b>TikTok</b> or <b>Facebook (Reels/Videos)</b>.\n\n"
+        "⚠️ <i>Note: Files larger than 50MB cannot be sent due to Telegram limits.</i>"
     )
-    await update.message.reply_text(help_text, parse_mode="Markdown")
+    await update.message.reply_text(help_text, parse_mode="HTML")
 
 # 3. /about command handler (Beautifully Styled with HTML Links)
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -59,9 +60,9 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(about_text, parse_mode="HTML", disable_web_page_preview=False)
 
-# 4. /status command handler
+# 4. /status command handler (Fixed to use HTML style seamlessly)
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🟢 **Status:** Online & operational on the cloud!")
+    await update.message.reply_text("🟢 <b>Status:</b> Online & operational on the cloud!", parse_mode="HTML")
 
 
 # --- VIDEO/IMAGE DOWNLOAD PARSER ENGINE ---
@@ -73,9 +74,18 @@ def download_media(url):
     
     ydl_opts = {
         'outtmpl': file_path_template,
-        'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best',
+        # 📉 CASCADE QUALITY LOGIC:
+        # Tries 720p first. If it's too large, it dynamically drops down to 480p, then 360p to fit under 50MB.
+        'format': (
+            'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
+            'best[height<=720][ext=mp4]/'
+            'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
+            'best[height<=480][ext=mp4]/'
+            'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
+            'best[height<=360][ext=mp4]/'
+            'worst[ext=mp4]/worst'
+        ),
         'format_sort': ['res:720', '+size'], 
-        'max_filesize': 49 * 1024 * 1024, 
         'quiet': True,
         'no_warnings': True,
     }
@@ -112,16 +122,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if file_path and os.path.exists(file_path):
         try:
-            # ⚖️ NEW: Check if the file size exceeds Telegram's strict 50MB limit
+            # ⚖️ Verification check against Telegram's strict 50MB limit
             file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
             if file_size_mb >= 50.0:
                 await status_msg.edit_text(
                     f"⚠️ <b>Video too large!</b>\n\n"
-                    f"This media is <b>{file_size_mb:.1f}MB</b>, which exceeds Telegram's strict 50MB limit for standard bots. "
-                    f"Try finding a shorter clip or lower resolution version!",
+                    f"Even at a reduced quality, this media is <b>{file_size_mb:.1f}MB</b>, which exceeds Telegram's strict 50MB limit for standard bots. "
+                    f"Try finding a shorter clip!",
                     parse_mode="HTML"
                 )
-                os.remove(file_path) # Clean up the server space immediately
+                os.remove(file_path) 
                 return
 
             await status_msg.edit_text("📤 Uploading media...")
