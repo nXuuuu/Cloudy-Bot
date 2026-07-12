@@ -30,7 +30,27 @@ def keep_alive():
 
 # --- TELEGRAM BOT LOGIC ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Hello! Send a TikTok or Facebook link into the group, and I'll download it!")
+    await update.message.reply_text("👋 ជំរាបសួរថ្ងៃនេះសុំ Full TP! សូមផ្ញើលីង TikTok ឬ Facebook Reel មកទីនេះខ្ញុំនឹងទាញយកវាជូន។")
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "ℹ️ **How to use CloudyBot:**\n\n"
+        "1. Add me to your group chat.\n"
+        "2. Make sure I have permission to read/send messages.\n"
+        "3. Simply paste a link from **TikTok** or **Facebook (Reels/Videos)**.\n\n"
+        "⚠️ *Note: Files larger than 50MB cannot be sent due to Telegram limits.*"
+    )
+    await update.message.reply_text(help_text, parse_mode="Markdown")
+async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    about_text = (
+        "☁️ **About CloudyBot**\n\n"
+        "A lightweight, data-saving media downloader designed for group chats.\n\n"
+        "• **Developer:** @_nxuu_\n"
+        "• **TEAM:** FINHUBKH\n"
+        "• **Webpage:** https://www.finhubkh.com/en"
+    )
+    await update.message.reply_text(about_text, parse_mode="Markdown")
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🟢 **Status:** Online & operational on the cloud!")
 
 def download_media(url):
     if not os.path.exists(DOWNLOAD_DIR):
