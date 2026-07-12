@@ -5,7 +5,7 @@ from threading import Thread
 from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import yt_dlp
+from telegram.request import HTTPXRequest
 
 # --- CONFIGURATION ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -45,7 +45,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(help_text, parse_mode="HTML")
 
-# 3. /about command handler (Beautifully Styled with HTML Links)
+# 3. /about command handler
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     about_text = (
         "⚡️ <b>CloudyBot v1.0</b> ⚡️\n"
@@ -73,7 +73,6 @@ def download_media(url):
     
     ydl_opts = {
         'outtmpl': file_path_template,
-        # 📉 CASCADE QUALITY LOGIC: Downscales nicely to pass 50MB limits
         'format': (
             'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
             'best[height<=720][ext=mp4]/'
@@ -120,7 +119,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if file_path and os.path.exists(file_path):
         try:
-            # ⚖️ Verification check against Telegram's strict 50MB limit
             file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
             if file_size_mb >= 50.0:
                 await status_msg.edit_text(
@@ -135,21 +133,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text("📤 Uploading media...")
             with open(file_path, 'rb') as media_file:
                 if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
-                    # ⏱️ Added explicit 60-second timeouts to protect network drops
+                    # ⏱️ Boosted to 300 seconds (5 minutes) maximum timeout window
                     await update.message.reply_photo(
                         photo=media_file, 
                         reply_to_message_id=update.message.message_id,
-                        connect_timeout=60,
-                        read_timeout=60
+                        connect_timeout=300,
+                        read_timeout=300,
+                        write_timeout=300
                     )
                 else:
-                    # ⏱️ Added explicit 60-second timeouts to protect network drops
+                    # ⏱️ Boosted to 300 seconds (5 minutes) maximum timeout window
                     await update.message.reply_video(
                         video=media_file, 
                         reply_to_message_id=update.message.message_id, 
                         supports_streaming=True,
-                        connect_timeout=60,
-                        read_timeout=60
+                        connect_timeout=300,
+                        read_timeout=300,
+                        write_timeout=300
                     )
             await status_msg.delete()
         except Exception as e:
@@ -166,7 +166,9 @@ def main():
         
     keep_alive() 
     
-    app = Application.builder().token(BOT_TOKEN).build()
+    # ⚙️ Pass explicit high timeouts to the core HTTP request handler layer
+    request_config = HTTPXRequest(connect_timeout=300, read_timeout=300, write_timeout=300)
+    app = Application.builder().token(BOT_TOKEN).request(request_config).build()
     
     # --- REGISTERED COMMAND HANDLERS ---
     app.add_handler(CommandHandler("start", start))
