@@ -9,6 +9,7 @@ from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
+import yt_dlp  # 🛠️ FIXED: Restored the missing import so the bot doesn't crash on boot
 
 # --- CONFIGURATION ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -88,6 +89,12 @@ def download_media(url):
         'format_sort': ['res:720', '+size'], 
         'quiet': True,
         'no_warnings': True,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Referer': 'https://www.tiktok.com/',
+        }
     }
 
     try:
@@ -124,13 +131,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             remaining_time = int(COOLDOWN_DURATION - time_passed)
             # Send cooldown warning notice
             cooldown_msg = await update.message.reply_text(
-                f"⏳ <b>សុំ Cooldown មួយ!</b>\n"
+                f"⏳ <b>សុំ Cooldown មួយ! Auto Deleting in 10 Seconds.</b>\n"
                 f"Please wait <b>{remaining_time}s</b> before sending another link to prevent spam.",
                 reply_to_message_id=update.message.message_id,
                 parse_mode="HTML"
             )
-            # 🧹 Auto-delete the cooldown notice after 5 seconds to keep the group clean
-            await asyncio.sleep(5)
+            # 🧹 1. FIXED: Changed sleep from 5 to 10 seconds here
+            await asyncio.sleep(10)
             try:
                 await cooldown_msg.delete()
             except Exception:
@@ -152,13 +159,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if file_size_mb >= 50.0:
                 await status_msg.edit_text(
                     f"⚠️ <b>Video too large!</b>\n\n"
-                    f"Even at a reduced quality, this media is <b>{file_size_mb:.1f}MB</b>, which exceeds Telegram's strict 50MB limit for standard bots.",
+                    f"Even at a reduced quality, this media is <b>{file_size_mb:.1f}MB</b>, which exceeds Telegram's strict 50MB limit for standard bots. Auto Deleting in 10 Seconds.",
                     parse_mode="HTML"
                 )
                 os.remove(file_path) 
                 
-                # 🧹 Clear large file warning after 5 seconds
-                await asyncio.sleep(5)
+                # 🧹 2. Clear large file warning after 10 seconds
+                await asyncio.sleep(10)
                 try:
                     await status_msg.delete()
                 except Exception:
@@ -183,21 +190,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # ✅ SUCCESS: Clean up the status update instantly
             await status_msg.delete()
         except Exception as e:
-            await status_msg.edit_text(f"❌ Upload Failed. (Error: {str(e)})")
+            await status_msg.edit_text(f"❌ Upload Failed. (Error: {str(e)}) Auto Deleting in 10 Seconds.")
             if os.path.exists(file_path):
                 os.remove(file_path)
             
-            # 🧹 Clear failed upload message after 5 seconds
-            await asyncio.sleep(5)
+            # 🧹 3. Clear failed upload message after 10 seconds
+            await asyncio.sleep(10)
             try:
                 await status_msg.delete()
             except Exception:
                 pass
     else:
-        await status_msg.edit_text("❌ Download Failed. The file might be private or temporarily unreachable.")
+        await status_msg.edit_text("❌ Download Failed. The file might be private or temporarily unreachable. Auto Deleting in 10 Seconds.")
         
-        # 🧹 Clear failed download message after 5 seconds
-        await asyncio.sleep(5)
+        # 🧹 4. Clear failed download message after 10 seconds
+        await asyncio.sleep(10)
         try:
             await status_msg.delete()
         except Exception:
