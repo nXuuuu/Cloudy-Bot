@@ -9,7 +9,7 @@ from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
-import yt_dlp  # Restored engine module
+import yt_dlp
 
 # --- CONFIGURATION ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -91,18 +91,16 @@ def download_media(url):
         'no_warnings': True,
         'nocheckcertificate': True,
         
-        # 🎭 BROWSER IMPERSONATION: Mimics natural browser handshakes
-        'impersonate': 'chrome', 
-        
+        # 🌐 Optimized headers that pass proxy credentials cleanly without 407 errors
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
             'Sec-Fetch-Mode': 'navigate',
         }
     }
 
-    # 🌐 PROXY BYPASS: Hooks up the proxy automatically if configured in Render
+    # 🌐 PROXY CONFIGURATION: Loaded automatically from your Render Env
     PROXY_URL = os.getenv("PROXY_URL")
     if PROXY_URL:
         ydl_opts['proxy'] = PROXY_URL
@@ -145,7 +143,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_to_message_id=update.message.message_id,
                 parse_mode="HTML"
             )
-            # 🧹 1. Clear cooldown warning after 10 seconds
+            # 🧹 1. Clear cooldown warning notice after 10 seconds
             await asyncio.sleep(10)
             try:
                 await cooldown_msg.delete()
@@ -196,14 +194,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         supports_streaming=True,
                         connect_timeout=300, read_timeout=300, write_timeout=300
                     )
-            # ✅ SUCCESS: Clean up status message instantly
+            # ✅ SUCCESS: Delete processing alert cleanly
             await status_msg.delete()
         except Exception as e:
             await status_msg.edit_text(f"❌ Upload Failed. (Error: {str(e)}) Auto Deleting in 10 Seconds.")
             if os.path.exists(file_path):
                 os.remove(file_path)
             
-            # 🧹 3. Clear failed upload warning after 10 seconds
+            # 🧹 3. Clear failed upload notice after 10 seconds
             await asyncio.sleep(10)
             try:
                 await status_msg.delete()
@@ -212,7 +210,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await status_msg.edit_text("❌ Download Failed. The file might be private or temporarily unreachable. Auto Deleting in 10 Seconds.")
         
-        # 🧹 4. Clear failed download warning after 10 seconds
+        # 🧹 4. Clear failed download alert after 10 seconds
         await asyncio.sleep(10)
         try:
             await status_msg.delete()
