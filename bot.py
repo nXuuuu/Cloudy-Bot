@@ -9,7 +9,7 @@ from flask import Flask
 from telegram import Update, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
-import httpx  # <--- The modern library replacing urllib
+import httpx
 import yt_dlp
 
 # --- CONFIGURATION ---
@@ -113,27 +113,35 @@ def download_media(url):
         ydl_opts['proxy_username'] = 'owxgqdqt'
         ydl_opts['proxy_password'] = 'bl25td2gpu4'
         
-        # Format the proxy specifically for HTTPX integration
         raw_ip_port = clean_proxy.replace('http://', '').replace('https://', '')
         httpx_proxy = f"http://owxgqdqt:bl25td2gpu4@{raw_ip_port}"
 
-    # --- 🔍 URL PRE-RESOLVER USING HTTPX ---
-    try:
-        # Added verify=False to prevent proxy SSL blocks
-        with httpx.Client(proxy=httpx_proxy, follow_redirects=True, timeout=15.0, verify=False) as client:
-            response = client.get(url, headers=ydl_opts['http_headers'])
-            url = str(response.url)
-    except Exception as e:
-        print(f"URL Resolve error: {e}")
-        pass
-        
-    # 🎭 SWAPPER: Safely switches photo paths to video paths to prevent yt-dlp crashes
+    # 🎭 PRE-SWAPPER: Catches explicit long photo URLs immediately
     if "/photo/" in url:
         url = url.replace("/photo/", "/video/")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
+            
+            # --- 🚀 THE CATCH-AND-RETRY TRAP ---
+            try:
+                # Let yt-dlp attempt to unroll shortlinks naturally
+                info_dict = ydl.extract_info(url, download=False)
+            except Exception as e:
+                error_msg = str(e)
+                # If yt-dlp crashes because it found a hidden /photo/ URL...
+                if "Unsupported URL" in error_msg and "/photo/" in error_msg:
+                    # Scrape the unrolled URL directly out of the crash message
+                    match = re.search(r'(https?://[^\s\'">]+)', error_msg)
+                    if match:
+                        true_url = match.group(1)
+                        # Swap it safely and retry instantly
+                        swapped_url = true_url.replace("/photo/", "/video/")
+                        info_dict = ydl.extract_info(swapped_url, download=False)
+                    else:
+                        raise e
+                else:
+                    raise e
             
             # 📸 CAROUSEL DETECTOR
             if info_dict.get('formats') is None or len(info_dict.get('formats', [])) <= 1 or info_dict.get('images'):
@@ -147,7 +155,6 @@ def download_media(url):
                     
                     # --- DOWNLOAD IMAGES USING HTTPX ---
                     try:
-                        # Added verify=False to prevent proxy SSL blocks
                         with httpx.Client(proxy=httpx_proxy, timeout=30.0, verify=False) as client:
                             for index, img_entry in enumerate(images[:10]):
                                 img_url = img_entry.get('url')
