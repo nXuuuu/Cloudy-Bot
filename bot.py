@@ -22,6 +22,9 @@ user_cooldowns = {}
 COOLDOWN_DURATION = 60    
 MAX_POSTS_ALLOWED = 3     
 
+# Track command replies to keep only the 2 most recent ones per chat
+command_replies_tracker = {}
+
 # --- FLASK WEB SERVER (FOR THE PING TRICK) ---
 app = Flask(__name__)
 
@@ -40,8 +43,52 @@ def keep_alive():
 
 # --- TELEGRAM BOT LOGIC ---
 
+async def send_command_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, parse_mode: str = None, disable_web_page_preview: bool = None):
+    chat_id = update.effective_chat.id
+    user_msg_id = update.message.message_id if update.message else None
+    
+    try:
+        # Send the bot's reply
+        bot_msg = await update.message.reply_text(
+            text, 
+            parse_mode=parse_mode, 
+            disable_web_page_preview=disable_web_page_preview
+        )
+        bot_msg_id = bot_msg.message_id
+    except Exception as e:
+        print(f"Error sending command reply: {e}", flush=True)
+        return
+
+    # Initialize list for this chat if not present
+    if chat_id not in command_replies_tracker:
+        command_replies_tracker[chat_id] = []
+        
+    tracker = command_replies_tracker[chat_id]
+    
+    # Append the new pair
+    tracker.append((bot_msg_id, user_msg_id))
+    
+    # If we have more than 2, delete the oldest
+    while len(tracker) > 2:
+        old_bot_id, old_user_id = tracker.pop(0)
+        # Delete bot reply
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=old_bot_id)
+        except Exception:
+            pass
+        # Delete user command
+        if old_user_id:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=old_user_id)
+            except Exception:
+                pass
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 ជំរាបសួរថ្ងៃនេះសុំ Full TP! សូមផ្ញើលីង TikTok ឬ Facebook Reel មកទីនេះខ្ញុំនឹងទាញយកវាជូន។")
+    await send_command_reply(
+        update, 
+        context, 
+        "👋 ជំរាបសួរថ្ងៃនេះសុំ Full TP! សូមផ្ញើលីង TikTok ឬ Facebook Reel មកទីនេះខ្ញុំនឹងទាញយកវាជូន។"
+    )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
@@ -51,7 +98,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "3. Simply paste a link from <b>TikTok</b> or <b>Facebook (Reels/Videos)</b>.\n\n"
         "⚠️ <i>Note: Files larger than 50MB cannot be sent due to Telegram limits.</i>"
     )
-    await update.message.reply_text(help_text, parse_mode="HTML")
+    await send_command_reply(update, context, help_text, parse_mode="HTML")
 
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     about_text = (
@@ -64,10 +111,10 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💡 <i>Type /help to see how to auto-extract TikTok & Facebook media instantly.</i>\n"
         "━━━━━━━━━━━━━━━━━━━━"
     )
-    await update.message.reply_text(about_text, parse_mode="HTML", disable_web_page_preview=False)
+    await send_command_reply(update, context, about_text, parse_mode="HTML", disable_web_page_preview=False)
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🟢 <b>Status:</b> Online & operational on the cloud!", parse_mode="HTML")
+    await send_command_reply(update, context, "🟢 <b>Status:</b> Online & operational on the cloud!", parse_mode="HTML")
 
 
 # --- VIDEO/IMAGE DOWNLOAD PARSER ENGINE ---
@@ -115,6 +162,7 @@ def download_via_tikwm(url, download_dir, httpx_proxy=None, ydl_opts=None):
                             with open(photo_path, 'wb') as out_file:
                                 out_file.write(img_response.content)
                             downloaded_photo_paths.append(photo_path)
+                    print(f"Successfully downloaded slideshow carousel containing {len(downloaded_photo_paths)} images via TikWM API.", flush=True)
                     return downloaded_photo_paths
                 
                 # Otherwise, it's a video
@@ -125,6 +173,7 @@ def download_via_tikwm(url, download_dir, httpx_proxy=None, ydl_opts=None):
                     video_response.raise_for_status()
                     with open(video_path, 'wb') as out_file:
                         out_file.write(video_response.content)
+                    print(f"Successfully downloaded video to {video_path} via TikWM API.", flush=True)
                     return video_path
         except Exception as e:
             attempt_type = "with proxy" if is_proxy_attempt else "direct"
@@ -188,9 +237,10 @@ def download_media(url):
 
     # Direct TikTok photo/slideshow bypass to TikWM
     if is_tiktok and "/photo/" in original_url:
-        print("Tiktok photo/slideshow detected. Downloading via TikWM...")
+        print("Tiktok photo/slideshow detected. Downloading via TikWM...", flush=True)
         tikwm_result = download_via_tikwm(original_url, DOWNLOAD_DIR, httpx_proxy, ydl_opts)
         if tikwm_result:
+            print("Direct TikWM download successful.", flush=True)
             return tikwm_result
 
     try:
@@ -254,11 +304,12 @@ def download_media(url):
                         return base_path + ext
             return file_path
     except Exception as e:
-        print(f"Download error: {e}")
+        print(f"Download error: {e}", flush=True)
         if is_tiktok:
-            print("Attempting TikWM fallback...")
+            print("Attempting TikWM fallback...", flush=True)
             tikwm_result = download_via_tikwm(original_url, DOWNLOAD_DIR, httpx_proxy, ydl_opts)
             if tikwm_result:
+                print("TikWM fallback download successful.", flush=True)
                 return tikwm_result
         return None
 
