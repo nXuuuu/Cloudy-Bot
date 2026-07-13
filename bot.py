@@ -71,6 +71,61 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- VIDEO/IMAGE DOWNLOAD PARSER ENGINE ---
+def download_via_tikwm(url, download_dir, httpx_proxy=None, ydl_opts=None):
+    api_url = "https://tikwm.com/api/"
+    post_data = {
+        "url": url,
+        "hd": 1
+    }
+    
+    try:
+        client_kwargs = {"timeout": 30.0, "verify": False}
+        if httpx_proxy:
+            client_kwargs["proxy"] = httpx_proxy
+            
+        with httpx.Client(**client_kwargs) as client:
+            response = client.post(api_url, data=post_data)
+            response.raise_for_status()
+            res_json = response.json()
+            
+            if res_json.get("code") != 0:
+                print(f"TikWM API Error: {res_json.get('msg')}")
+                return None
+                
+            media_data = res_json.get("data", {})
+            post_id = media_data.get("id", str(int(time.time())))
+            
+            # Check if it is a slideshow (photo mode)
+            images = media_data.get("images")
+            if images and isinstance(images, list):
+                downloaded_photo_paths = []
+                for index, img_entry in enumerate(images[:10]):  # Limit to 10 images
+                    img_url = img_entry.get("url") if isinstance(img_entry, dict) else img_entry
+                    if img_url:
+                        photo_path = f"{download_dir}/{post_id}_{index}.jpg"
+                        # Download each image
+                        img_response = client.get(img_url, headers=ydl_opts.get('http_headers') if ydl_opts else None)
+                        img_response.raise_for_status()
+                        with open(photo_path, 'wb') as out_file:
+                            out_file.write(img_response.content)
+                        downloaded_photo_paths.append(photo_path)
+                return downloaded_photo_paths
+            
+            # Otherwise, it's a video
+            video_url = media_data.get("play") or media_data.get("hdplay")
+            if video_url:
+                video_path = f"{download_dir}/{post_id}.mp4"
+                video_response = client.get(video_url)
+                video_response.raise_for_status()
+                with open(video_path, 'wb') as out_file:
+                    out_file.write(video_response.content)
+                return video_path
+                
+    except Exception as e:
+        print(f"TikWM download failed: {e}")
+        
+    return None
+
 def download_media(url):
     if not os.path.exists(DOWNLOAD_DIR):
         os.makedirs(DOWNLOAD_DIR)
@@ -116,9 +171,19 @@ def download_media(url):
         raw_ip_port = clean_proxy.replace('http://', '').replace('https://', '')
         httpx_proxy = f"http://owxgqdqt:bl25td2gpu4@{raw_ip_port}"
 
+    original_url = url
+    is_tiktok = "tiktok.com" in original_url or "vt.tiktok.com" in original_url
+
     # 🎭 PRE-SWAPPER: Catches explicit long photo URLs immediately
     if "/photo/" in url:
         url = url.replace("/photo/", "/video/")
+
+    # Direct TikTok photo/slideshow bypass to TikWM
+    if is_tiktok and "/photo/" in original_url:
+        print("Tiktok photo/slideshow detected. Downloading via TikWM...")
+        tikwm_result = download_via_tikwm(original_url, DOWNLOAD_DIR, httpx_proxy, ydl_opts)
+        if tikwm_result:
+            return tikwm_result
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -182,6 +247,11 @@ def download_media(url):
             return file_path
     except Exception as e:
         print(f"Download error: {e}")
+        if is_tiktok:
+            print("Attempting TikWM fallback...")
+            tikwm_result = download_via_tikwm(original_url, DOWNLOAD_DIR, httpx_proxy, ydl_opts)
+            if tikwm_result:
+                return tikwm_result
         return None
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
