@@ -4,6 +4,7 @@ import asyncio
 import subprocess
 import sys
 import time
+import urllib.parse
 from threading import Thread
 from flask import Flask
 from telegram import Update, InputMediaPhoto
@@ -244,12 +245,14 @@ def download_media(url):
     
     if PROXY_URL:
         clean_proxy = PROXY_URL.strip().rstrip('/')
-        ydl_opts['proxy'] = clean_proxy
-        ydl_opts['proxy_username'] = 'owxgqdqt'
-        ydl_opts['proxy_password'] = 'bl25td2gpu4'
-        
-        raw_ip_port = clean_proxy.replace('http://', '').replace('https://', '')
-        httpx_proxy = f"http://owxgqdqt:bl25td2gpu4@{raw_ip_port}"
+        if '@' in clean_proxy:
+            ydl_opts['proxy'] = clean_proxy
+            httpx_proxy = clean_proxy
+        else:
+            raw_ip_port = clean_proxy.replace('http://', '').replace('https://', '')
+            authenticated_proxy = f"http://owxgqdqt:bl25td2gpuq4@{raw_ip_port}"
+            ydl_opts['proxy'] = authenticated_proxy
+            httpx_proxy = authenticated_proxy
 
     original_url = url
     is_tiktok = "tiktok.com" in original_url or "vt.tiktok.com" in original_url
@@ -284,6 +287,23 @@ def download_media(url):
                         # Swap it safely and retry instantly
                         swapped_url = true_url.replace("/photo/", "/video/")
                         info_dict = ydl.extract_info(swapped_url, download=False)
+                    else:
+                        raise e
+                # If Facebook redirects to login, extract the 'next' destination URL and retry
+                elif "Unsupported URL" in error_msg and "facebook.com/login/" in error_msg:
+                    match = re.search(r'(https?://[^\s\'">]+)', error_msg)
+                    if match:
+                        login_url = match.group(1)
+                        parsed_url = urllib.parse.urlparse(login_url)
+                        query_params = urllib.parse.parse_qs(parsed_url.query)
+                        next_urls = query_params.get("next")
+                        if next_urls:
+                            target_url = next_urls[0]
+                            print(f"Facebook login redirect detected. Retrying with target URL: {target_url}", flush=True)
+                            info_dict = ydl.extract_info(target_url, download=False)
+                            url = target_url
+                        else:
+                            raise e
                     else:
                         raise e
                 else:
@@ -481,6 +501,17 @@ def main():
     if not BOT_TOKEN:
         print("CRITICAL: BOT_TOKEN environment variable is missing!", flush=True)
         return
+        
+    PROXY_URL = os.getenv("PROXY_URL")
+    if PROXY_URL:
+        parsed = urllib.parse.urlparse(PROXY_URL)
+        if parsed.password:
+            masked = PROXY_URL.replace(parsed.password, "********")
+        else:
+            masked = PROXY_URL
+        print(f"🔧 Configured PROXY_URL: {masked}", flush=True)
+    else:
+        print("🔧 No PROXY_URL configured.", flush=True)
         
     print("🔄 Checking for engine updates...", flush=True)
     try:
