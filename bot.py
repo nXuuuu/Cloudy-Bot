@@ -78,52 +78,60 @@ def download_via_tikwm(url, download_dir, httpx_proxy=None, ydl_opts=None):
         "hd": 1
     }
     
-    try:
-        client_kwargs = {"timeout": 30.0, "verify": False}
-        if httpx_proxy:
-            client_kwargs["proxy"] = httpx_proxy
-            
-        with httpx.Client(**client_kwargs) as client:
-            response = client.post(api_url, data=post_data)
-            response.raise_for_status()
-            res_json = response.json()
-            
-            if res_json.get("code") != 0:
-                print(f"TikWM API Error: {res_json.get('msg')}")
-                return None
-                
-            media_data = res_json.get("data", {})
-            post_id = media_data.get("id", str(int(time.time())))
-            
-            # Check if it is a slideshow (photo mode)
-            images = media_data.get("images")
-            if images and isinstance(images, list):
-                downloaded_photo_paths = []
-                for index, img_entry in enumerate(images[:10]):  # Limit to 10 images
-                    img_url = img_entry.get("url") if isinstance(img_entry, dict) else img_entry
-                    if img_url:
-                        photo_path = f"{download_dir}/{post_id}_{index}.jpg"
-                        # Download each image
-                        img_response = client.get(img_url, headers=ydl_opts.get('http_headers') if ydl_opts else None)
-                        img_response.raise_for_status()
-                        with open(photo_path, 'wb') as out_file:
-                            out_file.write(img_response.content)
-                        downloaded_photo_paths.append(photo_path)
-                return downloaded_photo_paths
-            
-            # Otherwise, it's a video
-            video_url = media_data.get("play") or media_data.get("hdplay")
-            if video_url:
-                video_path = f"{download_dir}/{post_id}.mp4"
-                video_response = client.get(video_url)
-                video_response.raise_for_status()
-                with open(video_path, 'wb') as out_file:
-                    out_file.write(video_response.content)
-                return video_path
-                
-    except Exception as e:
-        print(f"TikWM download failed: {e}")
+    # Try direct connection first, fallback to proxy if available and direct fails
+    clients_to_try = [
+        {"timeout": 30.0, "verify": False}  # Direct connection
+    ]
+    if httpx_proxy:
+        clients_to_try.append({"timeout": 30.0, "verify": False, "proxy": httpx_proxy})  # Proxy connection
         
+    for client_kwargs in clients_to_try:
+        is_proxy_attempt = "proxy" in client_kwargs
+        try:
+            with httpx.Client(**client_kwargs) as client:
+                response = client.post(api_url, data=post_data)
+                response.raise_for_status()
+                res_json = response.json()
+                
+                if res_json.get("code") != 0:
+                    print(f"TikWM API Error: {res_json.get('msg')}", flush=True)
+                    # If it's a specific API error (e.g. video not found), don't retry with proxy
+                    return None
+                    
+                media_data = res_json.get("data", {})
+                post_id = media_data.get("id", str(int(time.time())))
+                
+                # Check if it is a slideshow (photo mode)
+                images = media_data.get("images")
+                if images and isinstance(images, list):
+                    downloaded_photo_paths = []
+                    for index, img_entry in enumerate(images[:10]):  # Limit to 10 images
+                        img_url = img_entry.get("url") if isinstance(img_entry, dict) else img_entry
+                        if img_url:
+                            photo_path = f"{download_dir}/{post_id}_{index}.jpg"
+                            # Download each image
+                            img_response = client.get(img_url, headers=ydl_opts.get('http_headers') if ydl_opts else None)
+                            img_response.raise_for_status()
+                            with open(photo_path, 'wb') as out_file:
+                                out_file.write(img_response.content)
+                            downloaded_photo_paths.append(photo_path)
+                    return downloaded_photo_paths
+                
+                # Otherwise, it's a video
+                video_url = media_data.get("play") or media_data.get("hdplay")
+                if video_url:
+                    video_path = f"{download_dir}/{post_id}.mp4"
+                    video_response = client.get(video_url)
+                    video_response.raise_for_status()
+                    with open(video_path, 'wb') as out_file:
+                        out_file.write(video_response.content)
+                    return video_path
+        except Exception as e:
+            attempt_type = "with proxy" if is_proxy_attempt else "direct"
+            print(f"TikWM download attempt failed ({attempt_type}): {e}", flush=True)
+            # If direct failed and we have a proxy attempt left, we'll try it. Otherwise, loop ends.
+            continue
+            
     return None
 
 def download_media(url):
@@ -384,16 +392,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
 def main():
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
     if not BOT_TOKEN:
-        print("CRITICAL: BOT_TOKEN environment variable is missing!")
+        print("CRITICAL: BOT_TOKEN environment variable is missing!", flush=True)
         return
         
-    print("🔄 Checking for engine updates...")
+    print("🔄 Checking for engine updates...", flush=True)
     try:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"])
-        print("✅ Engine is up-to-date!")
+        print("✅ Engine is up-to-date!", flush=True)
     except Exception as update_error:
-        print(f"⚠️ Automatic update check skipped: {update_error}")
+        print(f"⚠️ Automatic update check skipped: {update_error}", flush=True)
 
     keep_alive() 
     
