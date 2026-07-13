@@ -502,6 +502,17 @@ def main():
         print("CRITICAL: BOT_TOKEN environment variable is missing!", flush=True)
         return
         
+    PROXY_URL = os.getenv("PROXY_URL")
+    if PROXY_URL:
+        parsed = urllib.parse.urlparse(PROXY_URL)
+        if parsed.password:
+            masked = PROXY_URL.replace(parsed.password, "********")
+        else:
+            masked = PROXY_URL
+        print(f"🔧 Configured PROXY_URL: {masked}", flush=True)
+    else:
+        print("🔧 No PROXY_URL configured.", flush=True)
+        
     print("🔄 Checking for engine updates...", flush=True)
     try:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"])
