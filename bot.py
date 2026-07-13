@@ -218,6 +218,8 @@ def download_media(url):
             'best[height<=480][ext=mp4]/'
             'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
             'best[height<=360][ext=mp4]/'
+            'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
+            'best[height<=720][ext=mp4]/'
             'worst[ext=mp4]/worst'
         ),
         'format_sort': ['res:480', '+size'], 
