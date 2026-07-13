@@ -372,16 +372,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_data["count"] += 1
     url = urls[0]
+    chat_id = update.effective_chat.id
+    print(f"[RECV] Chat ID: {chat_id} | User ID: {user_id} | Received URL: {url}", flush=True)
         
     status_msg = await update.message.reply_text("⏳ Processing link...", reply_to_message_id=update.message.message_id)
     
+    print(f"[DOWN] Starting download for URL: {url}", flush=True)
     loop = asyncio.get_event_loop()
     download_result = await loop.run_in_executor(None, download_media, url)
     
     if download_result:
+        print(f"[DOWN] Download successful. Result: {download_result}", flush=True)
         try:
             # 🎨 TYPE DETECTOR: Handles image carousel lists
             if isinstance(download_result, list):
+                print(f"[UPLD] Uploading photo album carousel ({len(download_result)} images)...", flush=True)
                 await status_msg.edit_text("📤 Uploading photo album carousel...")
                 
                 media_group = []
@@ -409,6 +414,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 file_path = download_result
                 file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
                 if file_size_mb >= 50.0:
+                    print(f"[LIMIT] File size {file_size_mb:.2f} MB exceeds 50 MB Telegram limit. Rejecting.", flush=True)
                     await status_msg.edit_text(
                         f"⚠️ <b>Video too large!</b>\n\n"
                         f"Even at a reduced quality, this media is <b>{file_size_mb:.1f}MB</b>, which exceeds Telegram's strict 50MB limit for standard bots. Auto Deleting in 10 Seconds.",
@@ -422,6 +428,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         pass
                     return
 
+                print(f"[UPLD] Uploading single media file: {file_path} ({file_size_mb:.2f} MB)...", flush=True)
                 await status_msg.edit_text("📤 Uploading media...")
                 with open(file_path, 'rb') as media_file:
                     if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
@@ -441,7 +448,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     os.remove(file_path)
                     
             await status_msg.delete()
+            print(f"[SUCCESS] Upload complete for URL: {url}. Cleaned up temp files.", flush=True)
         except Exception as e:
+            print(f"[ERROR] Upload failed: {e}", flush=True)
             await status_msg.edit_text(f"❌ Upload Failed. (Error: {str(e)}) Auto Deleting in 10 Seconds.")
             if isinstance(download_result, list):
                 for path in download_result:
@@ -454,6 +463,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
     else:
+        print(f"[DOWN] Download failed for URL: {url}", flush=True)
         await status_msg.edit_text("❌ Download Failed. The file might be private or temporarily unreachable. Auto Deleting in 10 Seconds.")
         await asyncio.sleep(10)
         try:
