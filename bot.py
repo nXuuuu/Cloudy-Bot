@@ -314,9 +314,9 @@ def download_media(url):
         return None
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message_text = update.message.text
-    if not message_text:
+    if not update.message or not update.message.text:
         return
+    message_text = update.message.text
         
     urls = re.findall(URL_REGEX, message_text)
     if not urls:
