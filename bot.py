@@ -14,7 +14,7 @@ import yt_dlp
 
 # --- CONFIGURATION ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-URL_REGEX = r"(https?://(?:www\.)?(?:tiktok\.com|vt\.tiktok\.com|facebook\.com|fb\.watch|fb\.com|instagram\.com|ddinstagram\.com)[^\s]+)"
+URL_REGEX = r"(https?://(?:www\.)?(?:tiktok\.com|vt\.tiktok\.com|facebook\.com|fb\.watch|fb\.com|instagram\.com|ddinstagram\.com|kkinstagram\.com)[^\s]+)"
 DOWNLOAD_DIR = "downloads"
 
 # 🛡️ ANTI-SPAM MULTI-POST TRACKER
@@ -248,6 +248,12 @@ def download_media(url):
         httpx_proxy = f"http://owxgqdqt:bl25td2gpu4@{raw_ip_port}"
 
     original_url = url
+    # Rewrite standard instagram.com to kkinstagram.com to bypass empty response restrictions
+    if "instagram.com" in url and "kkinstagram.com" not in url:
+        url = url.replace("instagram.com", "kkinstagram.com")
+        url = url.replace("/reels/", "/reel/")
+        print(f"Rewrote Instagram URL to bypass restriction: {url}", flush=True)
+        
     is_tiktok = "tiktok.com" in original_url or "vt.tiktok.com" in original_url
 
     # 🎭 PRE-SWAPPER: Catches explicit long photo URLs immediately
