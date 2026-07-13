@@ -14,7 +14,7 @@ import yt_dlp
 
 # --- CONFIGURATION ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-URL_REGEX = r"(https?://(?:www\.)?(?:tiktok\.com|vt\.tiktok\.com|facebook\.com|fb\.watch|fb\.com)[^\s]+)"
+URL_REGEX = r"(https?://(?:www\.)?(?:tiktok\.com|vt\.tiktok\.com|facebook\.com|fb\.watch|fb\.com|instagram\.com|ddinstagram\.com)[^\s]+)"
 DOWNLOAD_DIR = "downloads"
 
 # 🛡️ ANTI-SPAM MULTI-POST TRACKER
@@ -213,15 +213,13 @@ def download_media(url):
     ydl_opts = {
         'outtmpl': file_path_template,
         'format': (
-            'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=720][ext=mp4]/'
             'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
             'best[height<=480][ext=mp4]/'
             'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
             'best[height<=360][ext=mp4]/'
             'worst[ext=mp4]/worst'
         ),
-        'format_sort': ['res:720', '+size'], 
+        'format_sort': ['res:480', '+size'], 
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
@@ -397,7 +395,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_media_group(
                     media=media_group,
                     reply_to_message_id=update.message.message_id,
-                    connect_timeout=120, read_timeout=120, write_timeout=120
+                    connect_timeout=30, read_timeout=60, write_timeout=300
                 )
                 
                 for f in opened_files:
@@ -430,14 +428,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await update.message.reply_photo(
                             photo=media_file, 
                             reply_to_message_id=update.message.message_id,
-                            connect_timeout=120, read_timeout=120, write_timeout=120
+                            connect_timeout=30, read_timeout=60, write_timeout=300
                         )
                     else:
                         await update.message.reply_video(
                             video=media_file, 
                             reply_to_message_id=update.message.message_id, 
                             supports_streaming=True,
-                            connect_timeout=120, read_timeout=120, write_timeout=120
+                            connect_timeout=30, read_timeout=60, write_timeout=300
                         )
                 if os.path.exists(file_path):
                     os.remove(file_path)
@@ -479,7 +477,7 @@ def main():
 
     keep_alive() 
     
-    request_config = HTTPXRequest(connect_timeout=120, read_timeout=120, write_timeout=120)
+    request_config = HTTPXRequest(connect_timeout=30, read_timeout=60, write_timeout=300)
     app = Application.builder().token(BOT_TOKEN).request(request_config).build()
     
     app.add_handler(CommandHandler("start", start))
