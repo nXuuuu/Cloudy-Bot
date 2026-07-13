@@ -24,6 +24,7 @@ MAX_POSTS_ALLOWED = 3
 
 # Track command replies to keep only the 2 most recent ones per chat
 command_replies_tracker = {}
+OWNER_USERNAME = "sokunthanou"
 
 # --- FLASK WEB SERVER (FOR THE PING TRICK) ---
 app = Flask(__name__)
@@ -115,6 +116,26 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_command_reply(update, context, "🟢 <b>Status:</b> Online & operational on the cloud!", parse_mode="HTML")
+
+async def cleanup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if user.username and user.username.lower() == OWNER_USERNAME.lower():
+        import shutil
+        cleaned = False
+        if os.path.exists(DOWNLOAD_DIR):
+            try:
+                shutil.rmtree(DOWNLOAD_DIR)
+                os.makedirs(DOWNLOAD_DIR)
+                cleaned = True
+            except Exception as e:
+                print(f"Error during cleanup: {e}", flush=True)
+        
+        if cleaned:
+            await send_command_reply(update, context, "🧹 Downloads directory cleaned successfully!")
+        else:
+            await send_command_reply(update, context, "⚠️ Failed to clear downloads directory or directory is already empty.")
+    else:
+        await send_command_reply(update, context, "❌ Only the bot owner can use this command.")
 
 
 # --- VIDEO/IMAGE DOWNLOAD PARSER ENGINE ---
@@ -376,7 +397,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_media_group(
                     media=media_group,
                     reply_to_message_id=update.message.message_id,
-                    connect_timeout=300, read_timeout=300, write_timeout=300
+                    connect_timeout=120, read_timeout=120, write_timeout=120
                 )
                 
                 for f in opened_files:
@@ -409,14 +430,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await update.message.reply_photo(
                             photo=media_file, 
                             reply_to_message_id=update.message.message_id,
-                            connect_timeout=300, read_timeout=300, write_timeout=300
+                            connect_timeout=120, read_timeout=120, write_timeout=120
                         )
                     else:
                         await update.message.reply_video(
                             video=media_file, 
                             reply_to_message_id=update.message.message_id, 
                             supports_streaming=True,
-                            connect_timeout=300, read_timeout=300, write_timeout=300
+                            connect_timeout=120, read_timeout=120, write_timeout=120
                         )
                 if os.path.exists(file_path):
                     os.remove(file_path)
@@ -458,13 +479,14 @@ def main():
 
     keep_alive() 
     
-    request_config = HTTPXRequest(connect_timeout=300, read_timeout=300, write_timeout=300)
+    request_config = HTTPXRequest(connect_timeout=120, read_timeout=120, write_timeout=120)
     app = Application.builder().token(BOT_TOKEN).request(request_config).build()
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("about", about_command))
     app.add_handler(CommandHandler("status", status_command))
+    app.add_handler(CommandHandler("cleanup", cleanup_command))
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
