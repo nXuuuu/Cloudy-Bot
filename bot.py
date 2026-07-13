@@ -245,10 +245,14 @@ def download_media(url):
     
     if PROXY_URL:
         clean_proxy = PROXY_URL.strip().rstrip('/')
-        raw_ip_port = clean_proxy.replace('http://', '').replace('https://', '')
-        authenticated_proxy = f"http://owxgqdqt:bl25td2gpu4@{raw_ip_port}"
-        ydl_opts['proxy'] = authenticated_proxy
-        httpx_proxy = authenticated_proxy
+        if '@' in clean_proxy:
+            ydl_opts['proxy'] = clean_proxy
+            httpx_proxy = clean_proxy
+        else:
+            raw_ip_port = clean_proxy.replace('http://', '').replace('https://', '')
+            authenticated_proxy = f"http://owxgqdqt:bl25td2gpu4@{raw_ip_port}"
+            ydl_opts['proxy'] = authenticated_proxy
+            httpx_proxy = authenticated_proxy
 
     original_url = url
     is_tiktok = "tiktok.com" in original_url or "vt.tiktok.com" in original_url
