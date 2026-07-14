@@ -214,15 +214,18 @@ def download_media(url):
     ydl_opts = {
         'outtmpl': file_path_template,
         'format': (
-            'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=480][ext=mp4]/'
-            'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=360][ext=mp4]/'
-            'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=720][ext=mp4]/'
+            'bestvideo[height<=360][vcodec^=avc1]+bestaudio[ext=m4a]/'
+            'best[height<=360][vcodec^=avc1]/'
+            'bestvideo[height<=360]+bestaudio/'
+            'best[height<=360]/'
+            'bestvideo[height<=480][vcodec^=avc1]+bestaudio[ext=m4a]/'
+            'best[height<=480][vcodec^=avc1]/'
+            'bestvideo[height<=480]+bestaudio/'
+            'best[height<=480]/'
             'worst[ext=mp4]/worst'
         ),
-        'format_sort': ['res:480', '+size'], 
+        'format_sort': ['vcodec:h264', 'acodec:m4a', 'res:360', '+size'], 
+        'merge_output_format': 'mp4',
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
